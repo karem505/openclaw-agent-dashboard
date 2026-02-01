@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Server Monitor — OpenClaw</title>
+<meta name="description" content="Real-time server monitoring dashboard for OpenClaw with CPU, memory, disk, and network metrics.">
+<meta name="author" content="Abo-Elmakarem Shohoud">
+<meta property="og:title" content="OpenClaw Server Monitor">
+<meta property="og:description" content="Real-time server monitoring dashboard for OpenClaw with CPU, memory, disk, and network metrics.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://github.com/karem505/openclaw-agent-dashboard">
+<meta property="og:image" content="https://raw.githubusercontent.com/karem505/openclaw-agent-dashboard/main/screenshots/server-monitor.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#06080e;--bg2:#0a0d14;--card:#0d1117;--border:#1a1f2e;
+    --text:#e6edf3;--text2:#8b949e;--accent:#7c5cfc;--accent2:#a78bfa;
+    --green:#2dd4a0;--yellow:#f5a623;--red:#f85149;--blue:#58a6ff;
+    --glass:rgba(13,17,23,0.7);--glow:rgba(124,92,252,0.15);
+    --font:'Outfit',system-ui,sans-serif;--mono:'Space Mono',monospace;
+  }
+  body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;overflow-x:hidden}
+  .bg-mesh{position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:radial-gradient(ellipse 80% 60% at 20% 20%,rgba(124,92,252,0.06),transparent),
+    radial-gradient(ellipse 60% 50% at 80% 80%,rgba(45,212,160,0.04),transparent),
+    radial-gradient(ellipse 50% 40% at 50% 50%,rgba(88,166,255,0.03),transparent)}
+  .container{max-width:1200px;margin:0 auto;padding:20px;position:relative;z-index:1}
+  
+  header{display:flex;align-items:center;justify-content:space-between;padding:16px 0 24px;border-bottom:1px solid var(--border);margin-bottom:24px}
+  .logo{font-size:1.5rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-size:200% 200%;animation:shimmer 6s ease infinite}
+  @keyframes shimmer{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+  .logo-sub{font-size:.7rem;letter-spacing:3px;text-transform:uppercase;color:var(--text2);margin-top:2px}
+  .status-dot{width:10px;height:10px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s infinite;margin-right:8px}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(45,212,160,0.4)}50%{box-shadow:0 0 0 6px rgba(45,212,160,0)}}
+  .header-right{display:flex;align-items:center;gap:12px;font-size:.85rem;color:var(--text2)}
+  .back-link{color:var(--accent);text-decoration:none;font-size:.85rem;border:1px solid var(--border);padding:6px 14px;border-radius:999px;transition:all .2s}
+  .back-link:hover{background:var(--glow);border-color:var(--accent)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:24px}
+  .card{background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:20px;position:relative;overflow:hidden;transition:all .3s;animation:cardIn .5s ease backwards}
+  .card:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(124,92,252,0.1)}
+  .card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:3px 0 0 3px}
+  .card.cpu::before{background:linear-gradient(180deg,var(--accent),var(--blue))}
+  .card.mem::before{background:linear-gradient(180deg,var(--green),var(--blue))}
+  .card.disk::before{background:linear-gradient(180deg,var(--yellow),var(--accent))}
+  .card.net::before{background:linear-gradient(180deg,var(--blue),var(--accent2))}
+  .card.up::before{background:linear-gradient(180deg,var(--green),var(--yellow))}
+  .card.load::before{background:linear-gradient(180deg,var(--red),var(--yellow))}
+  @keyframes cardIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+  .card:nth-child(1){animation-delay:.05s}.card:nth-child(2){animation-delay:.1s}.card:nth-child(3){animation-delay:.15s}
+  .card:nth-child(4){animation-delay:.2s}.card:nth-child(5){animation-delay:.25s}.card:nth-child(6){animation-delay:.3s}
+  
+  .card-label{font-size:.7rem;letter-spacing:2px;text-transform:uppercase;color:var(--text2);margin-bottom:8px}
+  .card-value{font-size:2rem;font-weight:700;margin-bottom:4px}
+  .card-sub{font-size:.8rem;color:var(--text2);font-family:var(--mono)}
+  
+  .progress-bar{height:6px;background:var(--border);border-radius:6px;margin-top:12px;overflow:hidden}
+  .progress-fill{height:100%;border-radius:6px;transition:width .6s ease}
+  .fill-cpu{background:linear-gradient(90deg,var(--accent),var(--blue))}
+  .fill-mem{background:linear-gradient(90deg,var(--green),var(--blue))}
+  .fill-disk{background:linear-gradient(90deg,var(--yellow),var(--accent))}
+
+  .section{margin-bottom:24px}
+  .section-title{font-size:1.1rem;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .section-title::before{content:'';width:4px;height:18px;border-radius:4px;background:linear-gradient(180deg,var(--accent),var(--blue))}
+
+  .procs-table{width:100%;border-collapse:collapse;font-size:.82rem}
+  .procs-table th{text-align:left;padding:10px 12px;font-size:.7rem;letter-spacing:1px;text-transform:uppercase;color:var(--text2);border-bottom:1px solid var(--border)}
+  .procs-table td{padding:8px 12px;border-bottom:1px solid rgba(26,31,46,0.5);font-family:var(--mono);font-size:.78rem}
+  .procs-table tr:hover td{background:rgba(124,92,252,0.04)}
+
+  .chart-container{background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px}
+  canvas{width:100%!important;height:120px!important}
+  
+  .sys-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;font-size:.82rem}
+  .sys-info-item{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(26,31,46,0.3)}
+  .sys-info-key{color:var(--text2)}.sys-info-val{font-family:var(--mono);color:var(--text)}
+
+  .err{text-align:center;padding:40px;color:var(--red);font-size:1.1rem}
+  .loading{text-align:center;padding:40px;color:var(--text2)}
+  
+  @media(max-width:600px){.grid{grid-template-columns:1fr}.card-value{font-size:1.5rem}header{flex-direction:column;gap:12px}}
+</style>
+</head>
+<body>
+<div class="bg-mesh"></div>
+<div class="container">
+  <header>
+    <div>
+      <div class="logo">Server Monitor</div>
+      <div class="logo-sub">OpenClaw Infrastructure</div>
+    </div>
+    <div class="header-right">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Connecting...</span>
+      <a href="/" class="back-link">← Control UI</a>
+    </div>
+  </header>
+
+  <div class="grid" id="cards">
+    <div class="card cpu" style="animation-delay:.05s">
+      <div class="card-label">CPU Usage</div>
+      <div class="card-value" id="cpuVal">—</div>
+      <div class="card-sub" id="cpuSub"></div>
+      <div class="progress-bar"><div class="progress-fill fill-cpu" id="cpuBar" style="width:0%"></div></div>
+    </div>
+    <div class="card mem" style="animation-delay:.1s">
+      <div class="card-label">Memory</div>
+      <div class="card-value" id="memVal">—</div>
+      <div class="card-sub" id="memSub"></div>
+      <div class="progress-bar"><div class="progress-fill fill-mem" id="memBar" style="width:0%"></div></div>
+    </div>
+    <div class="card disk" style="animation-delay:.15s">
+      <div class="card-label">Disk</div>
+      <div class="card-value" id="diskVal">—</div>
+      <div class="card-sub" id="diskSub"></div>
+      <div class="progress-bar"><div class="progress-fill fill-disk" id="diskBar" style="width:0%"></div></div>
+    </div>
+    <div class="card net" style="animation-delay:.2s">
+      <div class="card-label">Network</div>
+      <div class="card-value" id="netVal">—</div>
+      <div class="card-sub" id="netSub"></div>
+    </div>
+    <div class="card up" style="animation-delay:.25s">
+      <div class="card-label">Uptime</div>
+      <div class="card-value" id="uptimeVal">—</div>
+      <div class="card-sub" id="uptimeSub"></div>
+    </div>
+    <div class="card load" style="animation-delay:.3s">
+      <div class="card-label">Load Average</div>
+      <div class="card-value" id="loadVal">—</div>
+      <div class="card-sub" id="loadSub"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">CPU History (5 min)</div>
+    <div class="chart-container"><canvas id="cpuChart"></canvas></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Memory History (5 min)</div>
+    <div class="chart-container"><canvas id="memChart"></canvas></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Top Processes</div>
+    <div style="background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;overflow:hidden">
+      <table class="procs-table">
+        <thead><tr><th>Command</th><th>PID</th><th>CPU %</th><th>Mem %</th><th>User</th></tr></thead>
+        <tbody id="procsBody"><tr><td colspan="5" style="text-align:center;color:var(--text2)">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">System Info</div>
+    <div style="background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:16px;padding:20px">
+      <div class="sys-info" id="sysInfo"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOKEN = new URLSearchParams(location.search).get('token') || localStorage.getItem('openclaw_token') || '';
+if (TOKEN) localStorage.setItem('openclaw_token', TOKEN);
+const API = (location.port === '18789' || location.port === '18790')
+  ? `${location.protocol}//${location.hostname}:18790/metrics?token=${TOKEN}`
+  : `/metrics?token=${TOKEN}`;
+
+let cpuHistory = [], memHistory = [];
+
+async function fetchMetrics() {
+  try {
+    const r = await fetch(API);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    update(d);
+    document.getElementById('statusDot').style.background = 'var(--green)';
+    document.getElementById('statusText').textContent = 'Live — ' + new Date(d.timestamp).toLocaleTimeString();
+  } catch (e) {
+    // Fallback: try static JSON
+    try {
+      const r2 = await fetch('/metrics.json?' + Date.now());
+      if (r2.ok) { const d = await r2.json(); update(d);
+        document.getElementById('statusDot').style.background = 'var(--yellow)';
+        document.getElementById('statusText').textContent = 'Static — ' + new Date(d.timestamp).toLocaleTimeString();
+        return;
+      }
+    } catch(e2) {}
+    document.getElementById('statusDot').style.background = 'var(--red)';
+    document.getElementById('statusText').textContent = 'Error: ' + e.message;
+  }
+}
+
+function update(d) {
+  // CPU
+  const cpuPct = d.cpu.overall;
+  document.getElementById('cpuVal').textContent = cpuPct + '%';
+  document.getElementById('cpuSub').textContent = `${d.cpu.count} cores — ${d.cpu.model.substring(0,35)}`;
+  document.getElementById('cpuBar').style.width = cpuPct + '%';
+  setCriticalColor('cpuBar', cpuPct, 'fill-cpu');
+
+  // Memory
+  document.getElementById('memVal').textContent = d.memory.pct + '%';
+  document.getElementById('memSub').textContent = `${d.memory.usedHuman} / ${d.memory.totalHuman}`;
+  document.getElementById('memBar').style.width = d.memory.pct + '%';
+  setCriticalColor('memBar', d.memory.pct, 'fill-mem');
+
+  // Disk
+  document.getElementById('diskVal').textContent = d.disk.pct + '%';
+  document.getElementById('diskSub').textContent = `${d.disk.usedHuman} / ${d.disk.totalHuman}`;
+  document.getElementById('diskBar').style.width = d.disk.pct + '%';
+  setCriticalColor('diskBar', d.disk.pct, 'fill-disk');
+
+  // Network
+  document.getElementById('netVal').innerHTML = `↓ ${d.network.rxRateHuman || '0 B/s'}`;
+  document.getElementById('netSub').textContent = `↑ ${d.network.txRateHuman || '0 B/s'} — Total: ${d.network.totalRxHuman || '0 B'} rx / ${d.network.totalTxHuman || '0 B'} tx`;
+
+  // Uptime
+  document.getElementById('uptimeVal').textContent = d.uptime.human;
+  document.getElementById('uptimeSub').textContent = d.hostname;
+
+  // Load
+  document.getElementById('loadVal').textContent = d.loadAvg['1m'];
+  document.getElementById('loadSub').textContent = `5m: ${d.loadAvg['5m']} — 15m: ${d.loadAvg['15m']}`;
+
+  // Processes
+  const tbody = document.getElementById('procsBody');
+  if (d.topProcesses && d.topProcesses.length) {
+    tbody.innerHTML = d.topProcesses.map(p => `<tr><td>${esc(p.command)}</td><td>${p.pid}</td><td>${p.cpu}</td><td>${p.mem}</td><td>${p.user}</td></tr>`).join('');
+  }
+
+  // System info
+  document.getElementById('sysInfo').innerHTML = [
+    ['Hostname', d.hostname], ['Platform', d.platform + ' / ' + d.arch],
+    ['Node.js', d.nodeVersion], ['CPU Model', d.cpu.model],
+    ['Total Memory', d.memory.totalHuman], ['Disk Mount', d.disk.mount || '/'],
+  ].map(([k,v])=>`<div class="sys-info-item"><span class="sys-info-key">${k}</span><span class="sys-info-val">${v||'—'}</span></div>`).join('');
+
+  // History
+  if (d.history) {
+    cpuHistory = d.history.cpu || [];
+    memHistory = d.history.mem || [];
+  } else {
+    cpuHistory.push({ ts: Date.now(), value: cpuPct });
+    memHistory.push({ ts: Date.now(), value: d.memory.pct });
+    if (cpuHistory.length > 60) cpuHistory.shift();
+    if (memHistory.length > 60) memHistory.shift();
+  }
+  drawChart('cpuChart', cpuHistory, 'rgba(124,92,252,0.8)', 'rgba(124,92,252,0.1)');
+  drawChart('memChart', memHistory, 'rgba(45,212,160,0.8)', 'rgba(45,212,160,0.1)');
+}
+
+function setCriticalColor(id, pct) {
+  const el = document.getElementById(id);
+  if (pct >= 90) el.style.background = 'linear-gradient(90deg,var(--red),var(--yellow))';
+  else if (pct >= 75) el.style.background = 'linear-gradient(90deg,var(--yellow),var(--accent))';
+}
+
+function drawChart(canvasId, data, stroke, fill) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const w = rect.width, h = rect.height;
+  ctx.clearRect(0, 0, w, h);
+  if (!data.length) return;
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(26,31,46,0.5)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = (h / 4) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  // Data
+  const vals = data.map(d => d.value);
+  const max = 100;
+  ctx.beginPath();
+  for (let i = 0; i < vals.length; i++) {
+    const x = (i / Math.max(vals.length - 1, 1)) * w;
+    const y = h - (vals[i] / max) * h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Fill
+  ctx.lineTo(w, h);
+  ctx.lineTo(0, h);
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+
+  // Current value label
+  const last = vals[vals.length - 1];
+  ctx.fillStyle = stroke;
+  ctx.font = '600 12px Outfit, sans-serif';
+  ctx.fillText(last + '%', w - 40, 16);
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// Initial fetch + interval
+fetchMetrics();
+setInterval(fetchMetrics, 5000);
+</script>
+<footer style="text-align:center;padding:24px 0 16px;color:#8b949e;font-size:0.85rem;font-family:'Outfit',sans-serif;">
+  Built by <a href="https://abo-elmakarem.netlify.app" target="_blank" style="color:#7c5cfc;text-decoration:none;">Abo-Elmakarem Shohoud</a> ·
+  <a href="https://github.com/karem505/openclaw-agent-dashboard" target="_blank" style="color:#8b949e;text-decoration:none;">GitHub</a>
+</footer>
+</body>
+</html>
