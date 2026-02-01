@@ -16,7 +16,7 @@ A full-featured, single-file agent management dashboard with task kanban boards,
 
 ## Demo
 
-https://github.com/user-attachments/assets/demo-video-placeholder
+[screen-capture.webm](https://github.com/user-attachments/assets/af27872e-68f8-4a60-a586-c3882572d79b)
 
 ## Screenshots
 
