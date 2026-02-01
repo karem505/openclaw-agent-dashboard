@@ -1081,7 +1081,7 @@ let currentFilter = 'all';
 let expandedTaskId = null;
 let _tasksHash = '';
 let _livePollingId = null;
-const LIVE_POLL_MS = 3000; // poll every 3 seconds
+const LIVE_POLL_MS = 15000; // was 3000, reduced to avoid excessive polling // poll every 3 seconds
 
 function _hashTasks(tasks) {
   // Fast hash: JSON of id+status+updatedAt+notes.length for each task
@@ -2900,7 +2900,7 @@ loadTasks(true);
 loadAgentMonitor();
 startLivePolling(); // Auto-poll tasks every 3s for live updates
 setInterval(checkConnection, 30000);
-setInterval(loadAgentMonitor, 15000); // Refresh agent monitor every 15s
+setInterval(loadAgentMonitor, 60000); // was 15s, reduced to 60s // Refresh agent monitor every 15s
 
 // Kanban mobile resize handler
 window.addEventListener('resize', () => {

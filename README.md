@@ -22,28 +22,28 @@ https://github.com/user-attachments/assets/demo-video-placeholder
 
 <table>
   <tr>
-    <td><img src="screenshots/tasks-list.png" alt="Tasks - List View" width="400"></td>
     <td><img src="screenshots/tasks-kanban.png" alt="Tasks - Kanban View" width="400"></td>
+    <td><img src="screenshots/task-detail.png" alt="Task Detail Modal" width="400"></td>
   </tr>
   <tr>
-    <td align="center"><strong>Tasks — List View</strong></td>
     <td align="center"><strong>Tasks — Kanban Board</strong></td>
+    <td align="center"><strong>Task Detail — Markdown & Attachments</strong></td>
   </tr>
   <tr>
     <td><img src="screenshots/documents.png" alt="Documents" width="400"></td>
     <td><img src="screenshots/apis.png" alt="APIs" width="400"></td>
   </tr>
   <tr>
-    <td align="center"><strong>Documents</strong></td>
+    <td align="center"><strong>Documents — Workspace Files</strong></td>
     <td align="center"><strong>Connected APIs</strong></td>
   </tr>
   <tr>
-    <td><img src="screenshots/agent-monitor.png" alt="Agent Monitor" width="400"></td>
-    <td><img src="screenshots/server-monitor.png" alt="Server Monitor" width="400"></td>
+    <td><img src="screenshots/logs.png" alt="Logs" width="400"></td>
+    <td></td>
   </tr>
   <tr>
-    <td align="center"><strong>Agent Monitor</strong></td>
-    <td align="center"><strong>Server Monitor</strong></td>
+    <td align="center"><strong>Agent Logs</strong></td>
+    <td></td>
   </tr>
 </table>
 
