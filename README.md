@@ -154,7 +154,7 @@ Authentication is handled via `?token=` query parameter, read dynamically from t
   <tr>
     <td>
       <strong>Abo-Elmakarem Shohoud</strong><br>
-      <a href="https://abo-elmakarem.netlify.app">Portfolio</a> ·
+      <a href="https://aboelmakarem.pro/">Portfolio</a> ·
       <a href="https://github.com/karem505">GitHub</a> ·
       <a href="https://linkedin.com/in/abo-elmakarem">LinkedIn</a>
     </td>
