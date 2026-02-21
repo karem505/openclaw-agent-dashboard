@@ -137,11 +137,21 @@ function setCors(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
+function parseCookies(req) {
+  const raw = req.headers['cookie'] || '';
+  return Object.fromEntries(raw.split(';').map(c => c.trim().split('=').map(s => decodeURIComponent(s.trim()))));
+}
+
 function authenticate(req) {
   const parsed = url.parse(req.url, true);
   if (parsed.query.token === AUTH_TOKEN) return true;
   const authHeader = req.headers['authorization'] || '';
   if (authHeader.startsWith('Bearer ') && authHeader.slice(7).trim() === AUTH_TOKEN) return true;
+  // Cookie-based session (set by /login page)
+  if (AUTH_TOKEN) {
+    const cookies = parseCookies(req);
+    if (cookies['ds'] === AUTH_TOKEN) return true;
+  }
   return false;
 }
 
@@ -449,8 +459,16 @@ function handleSkills(req, res, method) {
     }
   }
 
+  // Scan workspace custom skills (higher priority — appears first)
   scanDir(SKILLS_DIR);
-  jsonReply(res, 200, skills);
+  // Also scan system-installed skills if available
+  const SYSTEM_SKILLS_DIR = process.env.OPENCLAW_SYSTEM_SKILLS ||
+    '/opt/homebrew/lib/node_modules/openclaw/skills';
+  scanDir(SYSTEM_SKILLS_DIR);
+  // Deduplicate by skill name (workspace skills take precedence)
+  const seen = new Set();
+  const unique = skills.filter(s => { if (seen.has(s.name)) return false; seen.add(s.name); return true; });
+  jsonReply(res, 200, unique);
 }
 
 function parseSkillFrontmatter(content, filePath) {
@@ -1043,9 +1061,98 @@ const server = http.createServer((req, res) => {
     return jsonReply(res, 200, { status: 'ok', uptime: process.uptime() });
   }
 
-  // Auth check
+  // ── Login page (no auth required) ──────────────────────────────────────────
+  // Provides browser-friendly auth with a 30-day cookie session.
+  // Useful when accessing via Tailscale Funnel or any public HTTPS tunnel.
+  if (pathname === '/login') {
+    if (method === 'GET') {
+      setCors(res);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Dashboard Login</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#06080e;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  display:flex;align-items:center;justify-content:center;min-height:100vh;
+  min-height:-webkit-fill-available;padding:20px;padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+.card{background:#0d1117;border:1px solid #1a1f2e;border-radius:20px;padding:40px 32px;
+  width:100%;max-width:380px;text-align:center}
+.logo{font-size:2.5rem;margin-bottom:8px}
+h1{font-size:1.3rem;font-weight:700;margin-bottom:6px;color:#e6edf3}
+p{color:#8b949e;font-size:.9rem;margin-bottom:28px}
+input{width:100%;padding:14px 16px;border:1px solid #1a1f2e;border-radius:12px;
+  background:#06080e;color:#e6edf3;font-size:1rem;margin-bottom:16px;
+  outline:none;transition:border-color .2s;-webkit-appearance:none}
+input:focus{border-color:#7c5cfc}
+button{width:100%;padding:14px;background:#7c5cfc;color:#fff;border:none;border-radius:12px;
+  font-size:1rem;font-weight:600;cursor:pointer;min-height:48px;letter-spacing:.01em}
+button:active{opacity:.85}
+.err{color:#f0716a;font-size:.85rem;margin-top:14px}
+</style></head><body>
+<div class="card">
+  <div class="logo">🦞</div>
+  <h1>OpenClaw Dashboard</h1>
+  <p>Enter your access token to continue</p>
+  <form method="POST" action="/login">
+    <input type="password" name="token" placeholder="Access Token"
+           autofocus autocomplete="current-password" inputmode="text">
+    <button type="submit">Sign In</button>
+  </form>
+  ${parsed.query.err ? '<p class="err">Invalid token — please try again.</p>' : ''}
+</div></body></html>`);
+      return;
+    }
+    if (method === 'POST') {
+      return readBody(req).then(buf => {
+        const body = Object.fromEntries(new URLSearchParams(buf.toString()).entries());
+        if (body.token === AUTH_TOKEN) {
+          const maxAge = 60 * 60 * 24 * 30; // 30 days
+          res.writeHead(302, {
+            'Set-Cookie': `ds=${encodeURIComponent(AUTH_TOKEN)}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Strict`,
+            'Location': `/?token=${encodeURIComponent(AUTH_TOKEN)}`
+          });
+          res.end();
+        } else {
+          res.writeHead(302, { 'Location': '/login?err=1' });
+          res.end();
+        }
+      }).catch(() => { res.writeHead(400); res.end('Bad request'); });
+    }
+  }
+
+  // ── Logout ─────────────────────────────────────────────────────────────────
+  if (pathname === '/logout' && method === 'GET') {
+    res.writeHead(302, { 'Set-Cookie': 'ds=; Path=/; Max-Age=0', 'Location': '/login' });
+    res.end();
+    return;
+  }
+
+  // Auth check — redirect browsers to /login, return 401 for API clients
   if (!authenticate(req)) {
+    const acceptsHtml = (req.headers['accept'] || '').includes('text/html');
+    if (acceptsHtml) {
+      res.writeHead(302, { 'Location': '/login' });
+      res.end();
+      return;
+    }
     return errorReply(res, 401, 'Unauthorized');
+  }
+
+  // ── Serve dashboard HTML at root ───────────────────────────────────────────
+  if (pathname === '/' && method === 'GET') {
+    const htmlPath = path.join(__dirname, 'agent-dashboard.html');
+    try {
+      const html = fs.readFileSync(htmlPath);
+      setCors(res);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+    } catch (e) {
+      return errorReply(res, 404, 'Dashboard HTML not found');
+    }
+    return;
   }
 
   const segments = pathname.split('/').filter(Boolean);
