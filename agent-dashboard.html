@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Agent Dashboard — OpenClaw</title>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OpenClaw">
+<meta name="theme-color" content="#06080e">
 <meta name="description" content="Glassmorphic agent management dashboard for OpenClaw with task kanban, document editor, API monitoring & real-time agent tracking.">
 <meta name="author" content="Abo-Elmakarem Shohoud">
 <meta property="og:title" content="OpenClaw Agent Dashboard">
@@ -310,10 +315,29 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 
 /* ─── Responsive ─── */
 @media(max-width:768px){
-  header{flex-direction:column;gap:12px;text-align:center}
-  .header-right{justify-content:center}
-  .tab-bar{width:100%;justify-content:center}
-  .tab-btn{padding:8px 16px;font-size:.82rem}
+  /* ── Safe area & spacing ── */
+  body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+  .container{padding:0 12px}
+  header{flex-direction:column;gap:8px;text-align:center;padding:12px 0 16px}
+  .header-right{justify-content:center;flex-wrap:wrap;gap:8px}
+  /* ── Bottom navigation bar (thumb-friendly on phones) ── */
+  .tab-bar{
+    position:fixed;bottom:0;left:0;right:0;z-index:900;
+    width:100%;margin:0;border-radius:0;border:none;
+    border-top:1px solid var(--border);
+    background:rgba(6,8,14,0.92);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    display:flex;justify-content:space-around;
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom));gap:0
+  }
+  .tab-btn{
+    flex:1;display:flex;flex-direction:column;align-items:center;
+    padding:6px 4px;min-height:44px;font-size:.65rem;gap:2px;
+    border-radius:10px;white-space:nowrap
+  }
+  .tab-btn svg{width:20px;height:20px;margin:0}
+  .tab-btn .badge-count{margin-left:0}
+  /* ── Rest of layout ── */
   .tasks-toolbar{flex-direction:column;align-items:stretch}
   .search-input{width:100%}
   .spacer{display:none}
@@ -322,6 +346,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   .modal{width:95%;padding:20px}
   .task-header{flex-direction:column;align-items:flex-start}
   .logs-toolbar{flex-direction:column;align-items:flex-start}
+  .agent-stat-value{font-size:2rem}
 }
 
 /* ─── Task Detail Modal ─── */

@@ -148,6 +148,57 @@ The dashboard connects to standard OpenClaw REST endpoints:
 
 Authentication is handled via `?token=` query parameter, read dynamically from the URL.
 
+---
+
+## 📱 Mobile & Remote Access
+
+This fork adds **browser-native authentication**, **mobile-first UI**, and **macOS auto-start** — making the dashboard easy to monitor from your phone via a secure public URL.
+
+### What's added
+
+| Feature | Details |
+|---|---|
+| 🔐 Login page | `/login` — HTML form, 30-day cookie session, no manual token in URL |
+| 📱 Mobile bottom nav | Fixed tab bar at bottom for thumb-friendly navigation on phones |
+| 🍎 PWA support | `Add to Home Screen` works on iOS Safari — feels like a native app |
+| 📡 Static serving | `GET /` serves `agent-dashboard.html` directly — no separate web server needed |
+| 🔎 System skills scan | `/skills` now discovers both workspace *and* system-installed OpenClaw skills |
+| 🔄 macOS auto-start | LaunchAgent plist keeps the server alive across reboots |
+
+### Quick start with Tailscale Funnel (recommended for macOS)
+
+[Tailscale Funnel](https://tailscale.com/kb/1223/funnel) gives you a permanent public HTTPS URL without port forwarding or a separate cloud server.
+
+```bash
+# 1. Install Tailscale (if not already)
+brew install tailscale
+
+# 2. Start the dashboard
+export OPENCLAW_AUTH_TOKEN="your-secret-token"
+export OPENCLAW_WORKSPACE="$HOME/.openclaw/workspace"
+node api-server.js &
+
+# 3. Expose publicly via Tailscale Funnel (one-time setup)
+tailscale funnel --bg 18791
+
+# Your dashboard is now live at:
+#   https://<your-machine>.tail-xxxxx.ts.net/
+```
+
+Open that URL on your phone → sign in with your token → bookmark it. Done.
+
+### macOS auto-start (LaunchAgent)
+
+Copy `macos/com.openclaw.dashboard.plist.example` to `~/Library/LaunchAgents/`, fill in your username and token, then:
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.openclaw.dashboard.plist
+```
+
+The server will now start automatically on login and restart if it crashes.
+
+---
+
 ## Author
 
 <table>

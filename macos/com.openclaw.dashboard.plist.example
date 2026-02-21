@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS LaunchAgent — auto-starts the Dashboard API server on login.
+  1. Copy to ~/Library/LaunchAgents/com.openclaw.dashboard.plist
+  2. Fill in YOUR_USERNAME and set a strong OPENCLAW_AUTH_TOKEN
+  3. Load: launchctl load ~/Library/LaunchAgents/com.openclaw.dashboard.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.openclaw.dashboard</string>
+  <key>ProgramArguments</key>
+  <array>
+    <!-- Use `which node` to find your node path -->
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/YOUR_USERNAME/Projects/openclaw-agent-dashboard/api-server.js</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>OPENCLAW_AUTH_TOKEN</key>
+    <string>your-secret-token-here</string>
+    <key>OPENCLAW_WORKSPACE</key>
+    <string>/Users/YOUR_USERNAME/.openclaw/workspace</string>
+    <key>DASHBOARD_PORT</key>
+    <string>18791</string>
+    <key>HOME</key>
+    <string>/Users/YOUR_USERNAME</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Users/YOUR_USERNAME/Projects/openclaw-agent-dashboard</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/openclaw-dashboard.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/openclaw-dashboard-error.log</string>
+</dict>
+</plist>
