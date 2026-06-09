@@ -27,6 +27,12 @@
   --glass:rgba(13,17,23,0.7);--glow:rgba(124,92,252,0.15);
   --font:'Outfit',system-ui,sans-serif;--mono:'Space Mono',monospace;
 }
+[data-theme="light"]{
+  --bg:#f5f7fa;--bg2:#ffffff;--card:#ffffff;--border:#e1e4e8;
+  --text:#1f2328;--text2:#656d76;--accent:#7c5cfc;--accent2:#a78bfa;
+  --green:#1a7f64;--bf5a23;#c77d00;--red:#cf222e;--blue:#0969da;
+  --glass:rgba(255,255,255,0.7);--glow:rgba(124,92,252,0.1);
+}
 html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;overflow-x:hidden}
 .bg-mesh{position:fixed;inset:0;z-index:0;pointer-events:none;
@@ -692,6 +698,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <button class="refresh-btn" onclick="refreshCurrentTab()" title="Refresh">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       </button>
+      <button class="refresh-btn" onclick="toggleTheme()" title="Toggle theme" id="themeToggle">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
       <a href="/" class="back-link">← Control UI</a>
     </div>
   </header>
@@ -822,6 +831,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       </div>
       <input type="text" class="search-input" id="taskSearch" placeholder="Search tasks…">
       <span class="spacer"></span>
+      <!-- Quick Actions Toolbar -->
+      <div class="quick-actions" id="quickActions" style="display:inline-flex;gap:6px;margin-right:8px;">
+        <button class="filter-btn" onclick="filterByPriority('high')" title="High Priority">🔥</button>
+        <button class="filter-btn" onclick="filterByPriority('medium')" title="Medium Priority">⚡</button>
+        <button class="filter-btn" onclick="clearFilters()" title="Clear all filters">🧹</button>
+      </div>
       <button class="spawn-btn" onclick="toggleSelectionMode()" id="selectionModeBtn" title="Toggle selection mode for parallel execution">⚡ Parallel</button>
       <button class="create-btn" onclick="openCreateModal()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1123,6 +1138,7 @@ async function loadTasks(force) {
     if (!force && newHash === _tasksHash) return;
     _tasksHash = newHash;
     allTasks = tasks;
+    updateFilterCounts();
     document.getElementById('taskCount').textContent = allTasks.length;
     if (taskView === 'kanban') { setTaskView('kanban'); } else { setTaskView('list'); }
     // If detail modal is open and user isn't editing content, refresh it
@@ -1160,6 +1176,42 @@ function stopLivePolling() {
 function toggleLivePolling() {
   if (_livePollingId) { stopLivePolling(); toast('Live updates paused', 'info'); }
   else { startLivePolling(); toast('Live updates enabled', 'info'); }
+}
+
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  const next = current === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  toast('Theme: ' + next, 'info');
+}
+
+// Load saved theme on startup
+(function() {
+  const saved = localStorage.getItem('theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
+})();
+
+// Quick filter functions
+function filterByPriority(priority) {
+  currentFilter = 'all'; // Reset status filter
+  document.querySelectorAll('#statusFilters .filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('#statusFilters .filter-btn[data-filter="all"]').classList.add('active');
+  
+  // Filter by priority
+  allTasks = allTasks.filter(t => (t.priority || 'medium') === priority);
+  renderTasks();
+  toast('Showing: ' + priority + ' priority', 'info');
+}
+
+function clearFilters() {
+  currentFilter = 'all';
+  document.querySelectorAll('#statusFilters .filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('#statusFilters .filter-btn[data-filter="all"]').classList.add('active');
+  document.getElementById('taskSearch').value = '';
+  loadTasks(true);
+  toast('Filters cleared', 'info');
 }
 
 function renderTasks() {
@@ -1279,6 +1331,21 @@ document.getElementById('statusFilters').addEventListener('click', e => {
   currentFilter = btn.dataset.filter;
   renderTasks();
 });
+
+// Update filter button counts
+function updateFilterCounts() {
+  const counts = { all: allTasks.length, new: 0, 'in-progress': 0, done: 0, failed: 0 };
+  allTasks.forEach(t => {
+    const status = t.status || 'new';
+    if (counts[status] !== undefined) counts[status]++;
+  });
+  document.querySelectorAll('#statusFilters .filter-btn').forEach(btn => {
+    const filter = btn.dataset.filter;
+    if (filter !== 'all' && counts[filter] !== undefined) {
+      btn.textContent = filter.charAt(0).toUpperCase() + filter.slice(1).replace('-', ' ') + ' (' + counts[filter] + ')';
+    }
+  });
+}
 
 document.getElementById('taskSearch').addEventListener('input', () => {
   if (taskView === 'kanban') renderKanban();
@@ -2936,11 +3003,57 @@ window.addEventListener('resize', () => {
   }
 });
 
-// Keyboard shortcuts
+// Keyboard shortcuts - Enhanced
+const shortcuts = {
+  'Escape': () => { closeDetailModal(); closeCreateModal(); },
+  'n': () => { if (e.ctrlKey && e.shiftKey) { e.preventDefault(); openCreateModal(); } },
+  'f': () => { if (e.ctrlKey) { e.preventDefault(); document.getElementById('searchInput')?.focus(); } },
+  'r': () => { if (e.ctrlKey) { e.preventDefault(); loadTasks(true); loadAgentMonitor(); } },
+  '1': () => { if (e.ctrlKey) { e.preventDefault(); switchTab('tasks'); } },
+  '2': () => { if (e.ctrlKey) { e.preventDefault(); switchTab('documents'); } },
+  '3': () => { if (e.ctrlKey) { e.preventDefault(); switchTab('apis'); } },
+  '4': () => { if (e.ctrlKey) { e.preventDefault(); switchTab('logs'); } },
+  '5': () => { if (e.ctrlKey) { e.preventDefault(); switchTab('sessions'); } },
+  's': () => { if (e.ctrlKey) { e.preventDefault(); /* Save action */ } }
+};
+
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeDetailModal(); closeCreateModal(); }
-  if (e.key === 'n' && e.ctrlKey && e.shiftKey) { e.preventDefault(); openCreateModal(); }
+  const action = shortcuts[e.key];
+  if (action) action();
 });
+
+// Tab switching helper
+function switchTab(tabId) {
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+  tabBtns.forEach(btn => btn.classList.remove('active'));
+  tabPanes.forEach(pane => pane.classList.remove('active'));
+  const btn = document.querySelector('[data-tab="' + tabId + '"]');
+  const pane = document.getElementById(tabId + 'Tab');
+  if (btn) btn.classList.add('active');
+  if (pane) pane.classList.add('active');
+}
+
+// Show keyboard shortcuts hint
+function showShortcutsHint() {
+  const hint = document.createElement('div');
+  hint.id = 'shortcutsHint';
+  hint.style.cssText = 'position:fixed;bottom:20px;right:20px;background:linear-gradient(135deg,#1a1f2e,#2d3548);border:1px solid #3d4a5c;border-radius:12px;padding:16px 20px;color:#e6edf3;font-family:Outfit,sans-serif;font-size:13px;z-index:10000;box-shadow:0 8px32px rgba(0,0,0,0.4);max-width:280px;';
+  hint.innerHTML = '<strong style="color:#7c5cfc;display:block;margin-bottom:10px;">⌨️ Keyboard Shortcuts</strong>' +
+    '<div style="display:grid;gap:6px;font-size:12px;">' +
+    '<div><kbd style="background:#3d4a5c;padding:2px 6px;border-radius:4px;font-family:monospace;">Ctrl+1-5</kbd> Switch tabs</div>' +
+    '<div><kbd style="background:#3d4a5c;padding:2px 6px;border-radius:4px;font-family:monospace;">Ctrl+F</kbd> Search</div>' +
+    '<div><kbd style="background:#3d4a5c;padding:2px 6px;border-radius:4px;font-family:monospace;">Ctrl+R</kbd> Refresh</div>' +
+    '<div><kbd style="background:#3d4a5c;padding:2px 6px;border-radius:4px;font-family:monospace;">Ctrl+Shift+N</kbd> New Task</div>' +
+    '<div><kbd style="background:#3d4a5c;padding:2px 6px;border-radius:4px;font-family:monospace;">Esc</kbd> Close</div>' +
+    '</div>' +
+    '<button onclick="this.parentElement.remove()" style="margin-top:12px;background:#7c5cfc;border:none;color:white;padding:6px 12px;border-radius:6px;cursor:pointer;width:100%;">Got it!</button>';
+  document.body.appendChild(hint);
+  setTimeout(() => hint.remove(), 10000);
+}
+
+// Auto-show shortcuts on first load
+setTimeout(showShortcutsHint, 3000);
 </script>
 <footer style="text-align:center;padding:24px 0 16px;color:#8b949e;font-size:0.85rem;font-family:'Outfit',sans-serif;">
   Built by <a href="https://abo-elmakarem.netlify.app" target="_blank" style="color:#7c5cfc;text-decoration:none;">Abo-Elmakarem Shohoud</a> ·

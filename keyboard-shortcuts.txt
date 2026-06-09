@@ -1,0 +1,13 @@
+# Keyboard Shortcuts to Add
+
+## Priority: High
+
+1. **Ctrl+N** - New Task
+2. **Ctrl+F** - Focus Search
+3. **Ctrl+1-5** - Switch tabs (Tasks, Documents, APIs, Logs, Sessions)
+4. **Esc** - Close modals
+5. **Ctrl+S** - Save (in editor)
+6. **Ctrl+R** - Refresh data
+
+## Implementation Plan
+Add JavaScript event listeners for keyboard shortcuts to agent-dashboard.html
