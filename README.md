@@ -2,6 +2,8 @@
 
 # OpenClaw Agent Dashboard
 
+<p align="center"><a href="https://github.com/sponsors/karem505"><img src="https://img.shields.io/badge/Sponsor%20this%20project-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="Sponsor this project on GitHub Sponsors" height="40"></a></p>
+
 **Glassmorphic agent management dashboard for OpenClaw**
 
 [![MIT License](https://img.shields.io/badge/License-MIT-7c5cfc.svg)](LICENSE)
