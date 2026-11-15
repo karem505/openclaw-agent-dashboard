@@ -10,8 +10,15 @@ const url = require('url');
 // --- Config ---
 const PORT = parseInt(process.env.DASHBOARD_PORT || '18791', 10);
 const AUTH_TOKEN = process.env.OPENCLAW_AUTH_TOKEN || '';
-const WORKSPACE = process.env.OPENCLAW_WORKSPACE || path.join(process.env.HOME || '', 'clawd');
-const TASKS_FILE = path.join(__dirname, 'tasks.json');
+const OPENCLAW_CONFIG = process.env.OPENCLAW_CONFIG_FILE || path.join(process.env.HOME || '', '.openclaw', 'openclaw.json');
+const WORKSPACE = process.env.OPENCLAW_WORKSPACE || path.join(process.env.HOME || '', 'Agents_Central');
+// Governance (WORKSPACE_MAP.md): all shared state is anchored to the Obsidian Vault,
+// the single source of truth. Tasks + dashboard config live there; binaries stay local.
+const VAULT_DIR = process.env.OBSIDIAN_VAULT || path.join(process.env.HOME || '', 'Obsidian Vault');
+const STATE_DIR = process.env.DASHBOARD_STATE_DIR || path.join(VAULT_DIR, '99 - System', 'OpenClaw', 'dashboard');
+const TASKS_FILE = path.join(STATE_DIR, 'tasks.json');
+const DASHBOARD_CONFIG_FILE = path.join(STATE_DIR, 'config.json');
+const LEGACY_TASKS_FILE = path.join(__dirname, 'tasks.json');
 const SKILLS_DIR = path.join(WORKSPACE, 'skills');
 const MEMORY_DIR = path.join(WORKSPACE, 'memory');
 const SESSIONS_FILE = process.env.OPENCLAW_SESSIONS_FILE || path.join(process.env.HOME || '', '.openclaw', 'agents', 'main', 'sessions', 'sessions.json');
@@ -65,21 +72,22 @@ function triggerTaskExecution(task) {
     console.error(`[webhook] Error scanning attachments for task ${task.id}:`, e.message);
   }
 
+  const api = `http://localhost:${PORT}`;
   const message = `Execute this dashboard task immediately.
 
 Task ID: ${task.id}
 Title: ${task.title}
 Description: ${task.description || '(no description)'}
-Priority: ${task.priority || 'medium'}${attachmentInfo}
+Priority: ${task.priority || 'medium'}${task.model ? `\nRequested model: ${task.model} (route this task through this model if available)` : ''}${attachmentInfo}
 
 Steps:
-1. Update status to in-progress: curl -s -X PATCH 'http://localhost:18790/tasks/${task.id}?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"status":"in-progress"}'
+1. Update status to in-progress: curl -s -X PATCH '${api}/tasks/${task.id}?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"status":"in-progress"}'
 2. Execute the task (do what the title/description says)
 3. **IMPORTANT — File Attachments:** If you generate ANY files (images, documents, PDFs, etc.) as part of this task, attach them to the task using this command for EACH file:
-   curl -s -X POST 'http://localhost:18790/tasks/${task.id}/attachments?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"filePath":"/absolute/path/to/file.ext","source":"agent"}'
+   curl -s -X POST '${api}/tasks/${task.id}/attachments?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"filePath":"/absolute/path/to/file.ext","source":"agent"}'
    The filePath must be an absolute path to the generated file on the server. This lets the dashboard display the file.
-4. Add result as a note: curl -s -X POST 'http://localhost:18790/tasks/${task.id}/notes?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"text":"<YOUR_RESULT>"}'
-5. Mark done: curl -s -X PATCH 'http://localhost:18790/tasks/${task.id}?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"status":"done"}'
+4. Add result as a note: curl -s -X POST '${api}/tasks/${task.id}/notes?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"text":"<YOUR_RESULT>"}'
+5. Mark done: curl -s -X PATCH '${api}/tasks/${task.id}?token=${AUTH_TOKEN}' -H 'Content-Type: application/json' -d '{"status":"done"}'
 6. If it fails, mark failed with error in note.`;
 
   // Use /hooks/agent with unique session key per task
@@ -144,6 +152,7 @@ function parseCookies(req) {
 
 function authenticate(req) {
   const parsed = url.parse(req.url, true);
+  if (parsed.pathname === '/') return true; // Always allow the root dashboard page
   if (parsed.query.token === AUTH_TOKEN) return true;
   const authHeader = req.headers['authorization'] || '';
   if (authHeader.startsWith('Bearer ') && authHeader.slice(7).trim() === AUTH_TOKEN) return true;
@@ -186,6 +195,20 @@ function readJsonBody(req) {
   });
 }
 
+// --- Dashboard state init: vault-anchored, with one-time migration ---
+function initStateDir() {
+  try {
+    fs.mkdirSync(STATE_DIR, { recursive: true });
+    if (!fs.existsSync(TASKS_FILE) && fs.existsSync(LEGACY_TASKS_FILE)) {
+      fs.copyFileSync(LEGACY_TASKS_FILE, TASKS_FILE);
+      console.log(`[state] Migrated tasks from ${LEGACY_TASKS_FILE} → ${TASKS_FILE}`);
+    }
+  } catch (e) {
+    console.error(`[state] Failed to init vault state dir ${STATE_DIR}:`, e.message);
+  }
+}
+initStateDir();
+
 function readTasks() {
   try {
     const raw = fs.readFileSync(TASKS_FILE, 'utf8');
@@ -199,6 +222,90 @@ function writeTasks(tasks) {
   const tmp = TASKS_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(tasks, null, 2), 'utf8');
   fs.renameSync(tmp, TASKS_FILE);
+}
+
+// --- Dashboard config (agent display names, default model) ---
+// User renames/overrides persist to the vault; identities + model policy come
+// from openclaw.json (the authoritative gateway config).
+function readDashboardConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(DASHBOARD_CONFIG_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeDashboardConfig(cfg) {
+  fs.mkdirSync(STATE_DIR, { recursive: true });
+  const tmp = DASHBOARD_CONFIG_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2), 'utf8');
+  fs.renameSync(tmp, DASHBOARD_CONFIG_FILE);
+}
+
+function readOpenClawConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(OPENCLAW_CONFIG, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function buildPublicConfig() {
+  const oc = readOpenClawConfig();
+  const dash = readDashboardConfig();
+  const renamed = dash.agentNames || {};
+
+  const agents = {};
+  const entries = (oc && oc.agents && oc.agents.entries) || { main: {} };
+  for (const [id, a] of Object.entries(entries)) {
+    const ident = a.identity || {};
+    agents[id] = {
+      id,
+      name: renamed[id] || ident.name || id,
+      configuredName: ident.name || '',
+      avatar: ident.avatar || null,
+    };
+  }
+  if (!agents.main) agents.main = { id: 'main', name: renamed.main || 'Main Agent', configuredName: '', avatar: null };
+
+  const defaults = (oc && oc.agents && oc.agents.defaults) || {};
+  const aliases = defaults.models || {};
+  let allow = (defaults.modelPolicy && defaults.modelPolicy.allow) || Object.keys(aliases);
+  const models = allow.map(id => ({
+    id,
+    label: (aliases[id] && aliases[id].alias) || id,
+  }));
+  const defaultModel = dash.defaultModel || (defaults.model && defaults.model.primary) || (models[0] && models[0].id) || '';
+
+  return { agents, models, defaultModel, vaultDir: VAULT_DIR, workspace: WORKSPACE };
+}
+
+// --- Route: Config ---
+function handleConfig(req, res, method) {
+  if (method === 'GET') {
+    return jsonReply(res, 200, buildPublicConfig());
+  }
+  if (method === 'PUT' || method === 'PATCH') {
+    return readJsonBody(req).then((body) => {
+      const dash = readDashboardConfig();
+      if (body.agentNames && typeof body.agentNames === 'object') {
+        dash.agentNames = dash.agentNames || {};
+        for (const [id, name] of Object.entries(body.agentNames)) {
+          if (typeof id === 'string' && id.length <= 64 && typeof name === 'string') {
+            const trimmed = name.trim().substring(0, 64);
+            if (trimmed) dash.agentNames[id] = trimmed;
+            else delete dash.agentNames[id]; // empty name resets to configured default
+          }
+        }
+      }
+      if (typeof body.defaultModel === 'string' && body.defaultModel.length <= 200) {
+        dash.defaultModel = body.defaultModel;
+      }
+      writeDashboardConfig(dash);
+      return jsonReply(res, 200, buildPublicConfig());
+    }).catch((e) => errorReply(res, 400, e.message));
+  }
+  return errorReply(res, 405, 'Method not allowed');
 }
 
 function uuid() {
@@ -257,6 +364,7 @@ function handleTasks(req, res, parsed, segments, method) {
         status,
         priority,
         assignee: body.assignee || 'main',
+        model: typeof body.model === 'string' ? body.model.substring(0, 200) : '',
         createdAt: now,
         updatedAt: now,
         dueDate: body.dueDate || null,
@@ -294,8 +402,8 @@ function handleTasks(req, res, parsed, segments, method) {
           timestamp: new Date().toISOString(),
         });
         if (task.status === 'done' || task.status === 'failed') {
-          task.status = 'new';
           task.notes.push({ text: `Status changed from "${task.status}" to "new"`, timestamp: new Date().toISOString() });
+          task.status = 'new';
         }
         task.updatedAt = new Date().toISOString();
         triggerTaskExecution(task);
@@ -355,7 +463,7 @@ function handleTasks(req, res, parsed, segments, method) {
 
       const validStatuses = ['new', 'in-progress', 'done', 'failed'];
       const validPriorities = ['high', 'medium', 'low'];
-      const allowedFields = ['title', 'description', 'content', 'status', 'priority', 'assignee', 'dueDate', 'source'];
+      const allowedFields = ['title', 'description', 'content', 'status', 'priority', 'assignee', 'model', 'dueDate', 'source'];
 
       // Track status changes in notes
       if (body.status && body.status !== task.status) {
@@ -505,7 +613,7 @@ function handleLogs(req, res, parsed, segments, method) {
         id: t.id,
         title: t.title,
         status: t.status,
-        notes: t.notes.filter((n) => n.text.includes('Status changed') || true),
+        notes: t.notes,
       }));
     return jsonReply(res, 200, history);
   }
@@ -547,11 +655,18 @@ function handleAgents(req, res, parsed, segments, method) {
 
   // Read sessions
   let sessions = {};
+  let sessionsStoreAvailable = true;
   try {
     const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
     sessions = JSON.parse(raw);
   } catch (e) {
-    return errorReply(res, 500, 'Failed to read sessions: ' + e.message);
+    if (e.code === 'ENOENT') {
+      // OpenClaw migrated session state to sqlite — degrade gracefully instead of 500
+      sessionsStoreAvailable = false;
+      sessions = {};
+    } else {
+      return errorReply(res, 500, 'Failed to read sessions: ' + e.message);
+    }
   }
 
   // Read subagent runs
@@ -630,6 +745,7 @@ function handleAgents(req, res, parsed, segments, method) {
 
   const summary = {
     totalSessions: allSessions.length,
+    sessionsStoreAvailable,
     activeSessions: activeSessions.length,
     mainAgent: mainAgent ? {
       status: mainAgent.isActive ? 'active' : 'idle',
@@ -667,7 +783,8 @@ function handleAgents(req, res, parsed, segments, method) {
 function handleAttachments(req, res, parsed, segments, method) {
   // Segments: ['tasks', taskId, 'attachments', ...rest]
   const taskId = segments[1];
-  if (!taskId) return errorReply(res, 400, 'Task ID required');
+  // Task IDs are uuids; reject anything that could traverse out of ATTACHMENTS_DIR
+  if (!taskId || !/^[a-zA-Z0-9_-]+$/.test(taskId)) return errorReply(res, 400, 'Invalid task ID');
 
   const taskDir = path.join(ATTACHMENTS_DIR, taskId);
 
@@ -741,7 +858,7 @@ function handleAttachments(req, res, parsed, segments, method) {
         const srcPath = path.resolve(body.filePath);
         // Security: only allow files from /tmp, workspace, or user home
         const homeDir = process.env.HOME || '';
-        const allowedPrefixes = ['/tmp/', WORKSPACE + '/', homeDir + '/openclaw/'];
+        const allowedPrefixes = ['/tmp/', WORKSPACE + '/', homeDir + '/.openclaw/'];
         const isAllowed = allowedPrefixes.some(p => srcPath.startsWith(p));
         if (!isAllowed) throw new Error('filePath not in allowed directory');
         if (!fs.existsSync(srcPath)) throw new Error('Source file not found: ' + srcPath);
@@ -915,9 +1032,10 @@ function triggerCronRunNow(job) {
 function handleCron(req, res, parsed, segments, method) {
   // GET /cron — list all jobs
   if (method === 'GET' && segments.length === 1) {
+    const storeAvailable = fs.existsSync(CRON_STORE_PATH);
     const store = loadCronStore();
     const jobs = store.jobs || [];
-    return jsonReply(res, 200, { jobs, version: store.version || 1 });
+    return jsonReply(res, 200, { jobs, version: store.version || 1, storeAvailable });
   }
 
   // GET /cron/status — summary
@@ -1169,6 +1287,7 @@ button:active{opacity:.85}
     if (root === 'logs') return handleLogs(req, res, parsed, segments, method);
     if (root === 'agents') return handleAgents(req, res, parsed, segments, method);
     if (root === 'cron') return handleCron(req, res, parsed, segments, method);
+    if (root === 'config') return handleConfig(req, res, method);
     return errorReply(res, 404, 'Not found');
   } catch (e) {
     console.error('Unhandled error:', e);
@@ -1181,6 +1300,6 @@ server.on('error', (e) => {
   process.exit(1);
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Agent Dashboard API server listening on port ${PORT}`);
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`Agent Dashboard API server listening on port ${PORT} (localhost only)`);
 });

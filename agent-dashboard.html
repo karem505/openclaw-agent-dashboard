@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Agent Dashboard — OpenClaw</title>
+<title>Aitana Command Center</title>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,6 +17,7 @@
 <meta property="og:url" content="https://github.com/karem505/openclaw-agent-dashboard">
 <meta property="og:image" content="https://raw.githubusercontent.com/karem505/openclaw-agent-dashboard/main/screenshots/tasks-kanban.png">
 <script src="https://cdn.jsdelivr.net/npm/marked@14/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
@@ -30,7 +31,7 @@
 [data-theme="light"]{
   --bg:#f5f7fa;--bg2:#ffffff;--card:#ffffff;--border:#e1e4e8;
   --text:#1f2328;--text2:#656d76;--accent:#7c5cfc;--accent2:#a78bfa;
-  --green:#1a7f64;--bf5a23;#c77d00;--red:#cf222e;--blue:#0969da;
+  --green:#1a7f64;--yellow:#c77d00;--red:#cf222e;--blue:#0969da;
   --glass:rgba(255,255,255,0.7);--glow:rgba(124,92,252,0.1);
 }
 html{scroll-behavior:smooth}
@@ -55,6 +56,25 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 .back-link,.refresh-btn{color:var(--accent);text-decoration:none;font-size:.85rem;border:1px solid var(--border);padding:6px 14px;border-radius:999px;transition:all .2s;background:transparent;cursor:pointer;font-family:var(--font)}
 .back-link:hover,.refresh-btn:hover{background:var(--glow);border-color:var(--accent)}
 .refresh-btn svg{vertical-align:middle}
+
+/* ─── Aitana identity & settings ─── */
+.brand{display:flex;align-items:center;gap:12px}
+.brand-avatar{width:40px;height:40px;border-radius:12px;object-fit:cover;border:1px solid var(--border);
+  background:var(--card);box-shadow:0 2px 12px var(--glow)}
+.agent-avatar{width:28px;height:28px;border-radius:9px;object-fit:cover;border:1px solid var(--border);background:var(--card)}
+.agent-name-label{display:inline-flex;align-items:center;gap:6px}
+.rename-btn{background:none;border:none;color:var(--text2);cursor:pointer;font-size:.72rem;padding:1px 5px;
+  border-radius:6px;line-height:1.4;transition:all .2s;font-family:var(--font)}
+.rename-btn:hover{color:var(--accent);background:var(--glow)}
+.badge-model{font-size:.68rem;padding:2px 8px;border-radius:999px;font-family:var(--mono);
+  background:rgba(88,166,255,0.12);color:var(--blue);border:1px solid rgba(88,166,255,0.25)}
+.settings-agent-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.settings-agent-row:last-of-type{border-bottom:none}
+.settings-agent-row .agent-avatar{width:30px;height:30px}
+.settings-agent-id{font-family:var(--mono);font-size:.7rem;color:var(--text2)}
+.settings-name-input{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:10px;
+  background:var(--bg);color:var(--text);font-size:.9rem;font-family:var(--font);outline:none;-webkit-appearance:none}
+.settings-name-input:focus{border-color:var(--accent)}
 
 /* ─── Tab Bar ─── */
 .tab-bar{display:flex;gap:4px;background:var(--glass);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:14px;padding:4px;margin-bottom:24px;width:fit-content}
@@ -685,9 +705,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
 <div class="container">
   <!-- Header -->
   <header>
-    <div>
-      <div class="logo">Agent Dashboard</div>
-      <div class="logo-sub">OpenClaw · Task Management</div>
+    <div class="brand">
+      <img class="brand-avatar" id="brandAvatar" alt="Aitana" style="display:none" onerror="this.style.display='none'">
+      <div>
+        <div class="logo">Aitana Command Center</div>
+        <div class="logo-sub">OpenClaw · Task Management</div>
+      </div>
     </div>
     <div class="header-right">
       <span class="status-dot ok" id="statusDot"></span>
@@ -701,6 +724,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <button class="refresh-btn" onclick="toggleTheme()" title="Toggle theme" id="themeToggle">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       </button>
+      <button class="refresh-btn" onclick="openSettingsModal()" title="Settings — agent names & default model">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
       <a href="/" class="back-link">← Control UI</a>
     </div>
   </header>
@@ -709,11 +735,12 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
   <div class="agent-monitor" id="agentMonitor">
     <div class="agent-stat stat-main">
       <div class="agent-stat-header">
-        <span class="agent-stat-icon">🤖</span>
+        <img class="agent-avatar" id="mainAgentAvatar" alt="" style="display:none" onerror="this.style.display='none';document.getElementById('mainAgentIcon').style.display=''">
+        <span class="agent-stat-icon" id="mainAgentIcon">🤖</span>
         <span class="agent-stat-badge idle" id="mainAgentBadge"><span class="pulse-dot"></span> Loading</span>
       </div>
       <div class="agent-stat-value val-active" id="mainAgentValue">—</div>
-      <div class="agent-stat-label">Main Agent</div>
+      <div class="agent-stat-label"><span class="agent-name-label"><span id="mainAgentName">Aitana</span><button class="rename-btn" onclick="openSettingsModal()" title="Rename agents">✎</button></span></div>
       <div class="agent-stat-detail" id="mainAgentDetail">Checking…</div>
     </div>
     <div class="agent-stat stat-subagent">
@@ -958,7 +985,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <label class="form-label">📝 Content <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem;color:var(--text2)">(Markdown supported — use headers, lists, code blocks, tables…)</span></label>
       <textarea class="form-textarea" id="newContent" placeholder="# Detailed content here…&#10;&#10;Supports **bold**, *italic*, `code`, lists, tables, and more.&#10;&#10;```js&#10;const example = 'code block';&#10;```" style="min-height:160px"></textarea>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
       <div class="form-group">
         <label class="form-label">Priority</label>
         <select class="form-select" id="newPriority">
@@ -970,8 +997,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
       <div class="form-group">
         <label class="form-label">Assignee</label>
         <select class="form-select" id="newAssignee">
-          <option value="main">Main Agent</option>
+          <option value="main">Aitana</option>
           <option value="sub-agent">Sub-Agent</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Model</label>
+        <select class="form-select" id="newModel">
+          <option value="">Gateway default</option>
         </select>
       </div>
     </div>
@@ -992,6 +1025,28 @@ header{display:flex;align-items:center;justify-content:space-between;padding:16p
     <div class="modal-actions">
       <button class="action-btn" onclick="closeCreateModal()">Cancel</button>
       <button class="action-btn primary" id="createTaskBtn" onclick="createTask()">Create Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal — agent names & routing -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeSettingsModal()">✕</button>
+    <h2>Settings</h2>
+    <div class="form-group">
+      <label class="form-label">Agent names <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem;color:var(--text2)">(display names — cleared fields reset to the OpenClaw config name)</span></label>
+      <div id="settingsAgentList"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Default model for new tasks</label>
+      <select class="form-select" id="settingsDefaultModel">
+        <option value="">Gateway default</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="action-btn" onclick="closeSettingsModal()">Cancel</button>
+      <button class="action-btn primary" id="saveSettingsBtn" onclick="saveSettings()">Save settings</button>
     </div>
   </div>
 </div>
@@ -1081,7 +1136,13 @@ function toast(message, type = 'info') {
   const icons = { success: '✓', error: '✕', info: 'ℹ' };
   const t = document.createElement('div');
   t.className = `toast ${type}`;
-  t.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span>${message}</span>`;
+  const icon = document.createElement('span');
+  icon.className = 'toast-icon';
+  icon.textContent = icons[type] || icons.info;
+  const text = document.createElement('span');
+  text.textContent = String(message ?? '');
+  t.appendChild(icon);
+  t.appendChild(text);
   c.appendChild(t);
   setTimeout(() => { if (t.parentNode) t.remove(); }, 3500);
 }
@@ -1109,7 +1170,11 @@ function renderFullMarkdown(text) {
   if (!text) return '';
   try {
     if (typeof marked !== 'undefined' && marked.parse) {
-      return marked.parse(text, { breaks: true, gfm: true });
+      const html = marked.parse(text, { breaks: true, gfm: true });
+      // marked passes raw HTML through — sanitize before it touches the DOM.
+      // Offline without the sanitizer CDN, fall back to the escape-first renderer.
+      if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) return DOMPurify.sanitize(html);
+      return renderMarkdown(text);
     }
   } catch(e) { /* fallback */ }
   return renderMarkdown(text);
@@ -1117,6 +1182,121 @@ function renderFullMarkdown(text) {
 
 // ═══ TASKS ═══
 let allTasks = [];
+
+// ─── Dashboard Config (agent identities, renames, model routing) ───
+// Loaded from GET /config, which merges openclaw.json (authoritative names,
+// avatars, model policy) with user overrides saved in the Obsidian vault.
+let dashConfig = { agents: { main: { id: 'main', name: 'Aitana', configuredName: 'Aitana', avatar: null } }, models: [], defaultModel: '' };
+
+function agentDisplayName(id) {
+  if (!id) return id;
+  const a = dashConfig.agents && dashConfig.agents[id];
+  return (a && a.name) || id;
+}
+
+function modelLabel(id) {
+  const m = (dashConfig.models || []).find(m => m.id === id);
+  return m ? m.label : id;
+}
+
+async function loadDashboardConfig() {
+  try {
+    dashConfig = await apiFetch('/config');
+    applyDashboardConfig();
+  } catch(e) {
+    console.warn('Dashboard config load failed:', e.message);
+  }
+}
+
+function populateModelSelect(el, selected) {
+  const keep = el.querySelector('option[value=""]');
+  el.innerHTML = '';
+  if (keep) el.appendChild(keep);
+  for (const m of (dashConfig.models || [])) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.label + (m.label !== m.id ? ` (${m.id})` : '');
+    el.appendChild(opt);
+  }
+  el.value = selected || '';
+}
+
+function applyDashboardConfig() {
+  const main = (dashConfig.agents && dashConfig.agents.main) || {};
+  // Header + main-agent card avatars
+  for (const id of ['brandAvatar', 'mainAgentAvatar']) {
+    const img = document.getElementById(id);
+    if (img && main.avatar) { img.src = main.avatar; img.style.display = ''; }
+  }
+  if (main.avatar) {
+    const icon = document.getElementById('mainAgentIcon');
+    if (icon) icon.style.display = 'none';
+  }
+  // Main agent name everywhere
+  const nameEl = document.getElementById('mainAgentName');
+  if (nameEl) nameEl.textContent = main.name || 'Aitana';
+  const assignOpt = document.querySelector('#newAssignee option[value="main"]');
+  if (assignOpt) assignOpt.textContent = main.name || 'Aitana';
+  // Model pickers
+  const newModel = document.getElementById('newModel');
+  if (newModel) populateModelSelect(newModel, newModel.value);
+  const settingsModel = document.getElementById('settingsDefaultModel');
+  if (settingsModel) populateModelSelect(settingsModel, dashConfig.defaultModel);
+  // Re-render so name/model labels refresh everywhere
+  if (allTasks.length) { if (taskView === 'kanban') renderKanban(); else renderTasks(); }
+  if (agentData) renderAgentMonitor();
+}
+
+// ─── Settings Modal ───
+function openSettingsModal() {
+  const list = document.getElementById('settingsAgentList');
+  const agents = Object.values(dashConfig.agents || {});
+  list.innerHTML = agents.map(a => {
+    const avatar = a.avatar
+      ? `<img class="agent-avatar" src="${a.avatar}" alt="">`
+      : `<span class="agent-stat-icon">🤖</span>`;
+    return `<div class="settings-agent-row">
+      ${avatar}
+      <span class="settings-agent-id">${escHtml(a.id)}</span>
+      <input class="settings-name-input" data-agent-id="${escHtml(a.id)}"
+             value="${escHtml(a.name || '')}" placeholder="${escHtml(a.configuredName || a.id)}">
+    </div>`;
+  }).join('') || '<div style="color:var(--text2);font-size:.85rem;padding:8px 0">No agents found in OpenClaw config</div>';
+  populateModelSelect(document.getElementById('settingsDefaultModel'), dashConfig.defaultModel);
+  document.getElementById('settingsModal').classList.add('show');
+}
+
+function closeSettingsModal() {
+  document.getElementById('settingsModal').classList.remove('show');
+}
+
+async function saveSettings() {
+  const btn = document.getElementById('saveSettingsBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const agentNames = {};
+    document.querySelectorAll('.settings-name-input').forEach(inp => {
+      agentNames[inp.dataset.agentId] = inp.value.trim();
+    });
+    dashConfig = await apiFetch('/config', {
+      method: 'PUT',
+      body: JSON.stringify({
+        agentNames,
+        defaultModel: document.getElementById('settingsDefaultModel').value,
+      }),
+    });
+    applyDashboardConfig();
+    closeSettingsModal();
+    toast('Settings saved', 'success');
+  } catch(e) {
+    toast(`Failed to save settings: ${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save settings';
+  }
+}
+
 let currentFilter = 'all';
 let expandedTaskId = null;
 let _tasksHash = '';
@@ -1194,19 +1374,21 @@ function toggleTheme() {
 })();
 
 // Quick filter functions
+let priorityFilter = 'all';
 function filterByPriority(priority) {
   currentFilter = 'all'; // Reset status filter
   document.querySelectorAll('#statusFilters .filter-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('#statusFilters .filter-btn[data-filter="all"]').classList.add('active');
-  
-  // Filter by priority
-  allTasks = allTasks.filter(t => (t.priority || 'medium') === priority);
-  renderTasks();
+
+  // View-level filter only — never mutate the master task list
+  priorityFilter = priority;
+  if (taskView === 'kanban') renderKanban(); else renderTasks();
   toast('Showing: ' + priority + ' priority', 'info');
 }
 
 function clearFilters() {
   currentFilter = 'all';
+  priorityFilter = 'all';
   document.querySelectorAll('#statusFilters .filter-btn').forEach(b => b.classList.remove('active'));
   document.querySelector('#statusFilters .filter-btn[data-filter="all"]').classList.add('active');
   document.getElementById('taskSearch').value = '';
@@ -1219,6 +1401,7 @@ function renderTasks() {
   const search = (document.getElementById('taskSearch').value || '').toLowerCase();
   let filtered = allTasks;
   if (currentFilter !== 'all') filtered = filtered.filter(t => (t.status || 'new') === currentFilter);
+  if (priorityFilter !== 'all') filtered = filtered.filter(t => (t.priority || 'medium') === priorityFilter);
   if (search) filtered = filtered.filter(t => (t.title || '').toLowerCase().includes(search) || (t.description || '').toLowerCase().includes(search));
 
   if (filtered.length === 0) {
@@ -1249,7 +1432,8 @@ function renderTasks() {
         <span class="badge badge-priority ${priority}">${priority}</span>
       </div>
       <div class="task-meta">
-        ${task.assignee ? `<span>👤 ${escHtml(task.assignee)}</span>` : ''}
+        ${task.assignee ? `<span>👤 ${escHtml(agentDisplayName(task.assignee))}</span>` : ''}
+        ${task.model ? `<span class="badge-model" title="${escHtml(task.model)}">${escHtml(modelLabel(task.model))}</span>` : ''}
         ${date ? `<span>📅 ${date}</span>` : ''}
         ${dueDate ? `<span>⏰ Due ${dueDate}</span>` : ''}
         ${notes.length ? `<span>📝 ${notes.length} note${notes.length > 1 ? 's' : ''}</span>` : ''}
@@ -1356,6 +1540,8 @@ document.getElementById('taskSearch').addEventListener('input', () => {
 let pendingCreateFiles = [];
 
 function openCreateModal() {
+  const modelSel = document.getElementById('newModel');
+  populateModelSelect(modelSel, dashConfig.defaultModel || '');
   document.getElementById('createModal').classList.add('show');
   document.getElementById('newTitle').focus();
   setupCreateDropZone();
@@ -1366,6 +1552,7 @@ function closeCreateModal() {
   ['newTitle', 'newDesc', 'newContent', 'newDueDate'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('newPriority').value = 'medium';
   document.getElementById('newAssignee').value = 'main';
+  document.getElementById('newModel').value = dashConfig.defaultModel || '';
   pendingCreateFiles = [];
   renderCreateAttQueue();
 }
@@ -1459,6 +1646,7 @@ async function createTask() {
     content: document.getElementById('newContent').value.trim(),
     priority: document.getElementById('newPriority').value,
     assignee: document.getElementById('newAssignee').value,
+    model: document.getElementById('newModel').value,
     status: 'new'
   };
   const due = document.getElementById('newDueDate').value;
@@ -1501,6 +1689,9 @@ async function createTask() {
 document.getElementById('createModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeCreateModal();
 });
+document.getElementById('settingsModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeSettingsModal();
+});
 
 // ═══ KANBAN VIEW ═══
 let taskView = localStorage.getItem('taskView') || 'list';
@@ -1536,6 +1727,7 @@ function renderKanban() {
   const board = document.getElementById('kanbanBoard');
   const search = (document.getElementById('taskSearch').value || '').toLowerCase();
   let filtered = allTasks;
+  if (priorityFilter !== 'all') filtered = filtered.filter(t => (t.priority || 'medium') === priorityFilter);
   if (search) filtered = filtered.filter(t => (t.title || '').toLowerCase().includes(search) || (t.description || '').toLowerCase().includes(search));
 
   board.innerHTML = KANBAN_COLUMNS.map(col => {
@@ -1572,8 +1764,9 @@ function renderKanbanCard(task) {
     <div class="kanban-card-title">${escHtml(task.title || 'Untitled')}</div>
     <div class="kanban-card-footer">
       <span class="badge badge-priority ${priority}">${priority}</span>
+      ${task.model ? `<span class="badge-model" title="${escHtml(task.model)}">${escHtml(modelLabel(task.model))}</span>` : ''}
       ${task.notes && task.notes.length ? `<span style="font-size:.68rem;color:var(--text2)">📝${task.notes.length}</span>` : ''}
-      ${task.assignee ? `<span class="kanban-card-assignee">👤 ${escHtml(task.assignee)}</span>` : ''}
+      ${task.assignee ? `<span class="kanban-card-assignee">👤 ${escHtml(agentDisplayName(task.assignee))}</span>` : ''}
     </div>
   </div>`;
 }
@@ -1660,11 +1853,12 @@ function openDetailModal(taskId) {
   document.getElementById('detailStatusRow').innerHTML = `
     <span class="badge badge-${status}">${statusLabel(status)}</span>
     <span class="badge badge-priority ${priority}">${priority}</span>
+    ${task.model ? `<span class="badge-model" title="Requested model: ${escHtml(task.model)}">🧠 ${escHtml(modelLabel(task.model))}</span>` : ''}
     ${task.source ? `<span class="badge" style="background:rgba(139,148,158,0.1);color:var(--text2);border:1px solid var(--border)">${escHtml(task.source)}</span>` : ''}
   `;
   document.getElementById('detailTitle').textContent = task.title || 'Untitled';
   document.getElementById('detailMeta').innerHTML = `
-    ${task.assignee ? `<span>👤 ${escHtml(task.assignee)}</span>` : ''}
+    ${task.assignee ? `<span>👤 ${escHtml(agentDisplayName(task.assignee))}</span>` : ''}
     ${created ? `<span>📅 Created ${created.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>` : ''}
     ${updated ? `<span>🔄 Updated ${timeAgo(updated)}</span>` : ''}
     ${due ? `<span>⏰ Due ${due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>` : ''}
@@ -1750,11 +1944,12 @@ function openDetailModal(taskId) {
         ${outputNotes.map((n, i) => {
           const txt = n.text || n.content || '';
           const time = n.timestamp || n.createdAt;
-          const escaped = txt.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '');
+          // Base64 is attribute-safe — no quote/injection risk — decode in copyOutput
+          const b64 = btoa(unescape(encodeURIComponent(txt)));
           return `<div class="detail-output" style="${i > 0 ? 'margin-top:10px' : ''}">
             <div class="detail-output-header">
               <span>🤖 Output${time ? ' · ' + new Date(time).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : ''}</span>
-              <button class="detail-output-copy" onclick="copyOutput(this, '${escaped}')">Copy</button>
+              <button class="detail-output-copy" onclick="copyOutput(this, '${b64}')">Copy</button>
             </div>
             <div class="detail-output-body">${renderMarkdown(txt)}</div>
           </div>`;
@@ -1867,7 +2062,8 @@ function toggleNoteExpand(noteId, btn) {
   btn.textContent = el.classList.contains('truncated') ? 'Show more' : 'Show less';
 }
 
-function copyOutput(btn, text) {
+function copyOutput(btn, b64) {
+  const text = decodeURIComponent(escape(atob(b64)));
   navigator.clipboard.writeText(text).then(() => {
     btn.textContent = 'Copied!';
     setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
@@ -2530,6 +2726,11 @@ function renderAgentMonitor() {
     const tokens = d.mainAgent.totalTokens ? `${Math.round(d.mainAgent.totalTokens / 1000)}k tokens` : '';
     mainDetail.textContent = `${model}${tokens ? ' · ' + tokens : ''}`;
   }
+  if (d.sessionsStoreAvailable === false) {
+    mainBadge.className = 'agent-stat-badge idle';
+    mainBadge.innerHTML = `<span class="pulse-dot"></span> Unavailable`;
+    mainDetail.textContent = 'Session store migrated — live monitoring offline';
+  }
 
   // Sub-Agents
   const subVal = document.getElementById('subagentValue');
@@ -2629,7 +2830,7 @@ function renderSessionsPanel() {
 
     return `<div class="agent-session-row">
       <span class="agent-session-dot ${s.isActive ? 'active' : 'idle'}"></span>
-      <span class="agent-session-type type-${s.displayType}">${s.displayType}</span>
+      <span class="agent-session-type type-${s.displayType}">${s.displayType === 'main' ? escHtml(agentDisplayName('main')) : s.displayType}</span>
       <span class="agent-session-key" title="${escHtml(s.key || '')}">${escHtml(shortKey)}</span>
       ${label ? `<span class="agent-session-label" title="${escHtml(label)}">${escHtml(label)}</span>` : ''}
       <span class="agent-session-tokens">${tokens}</span>
@@ -2988,6 +3189,7 @@ document.addEventListener('keydown', e => {
 
 // ═══ INIT ═══
 checkConnection();
+loadDashboardConfig();
 loadTasks(true);
 loadAgentMonitor();
 startLivePolling(); // Auto-poll tasks every 3s for live updates
@@ -3005,33 +3207,25 @@ window.addEventListener('resize', () => {
 
 // Keyboard shortcuts - Enhanced
 const shortcuts = {
-  'Escape': () => { closeDetailModal(); closeCreateModal(); },
-  'n': () => { if (e.ctrlKey && e.shiftKey) { e.preventDefault(); openCreateModal(); } },
-  'f': () => { if (e.ctrlKey) { e.preventDefault(); document.getElementById('searchInput')?.focus(); } },
-  'r': () => { if (e.ctrlKey) { e.preventDefault(); loadTasks(true); loadAgentMonitor(); } },
-  '1': () => { if (e.ctrlKey) { e.preventDefault(); switchTab('tasks'); } },
-  '2': () => { if (e.ctrlKey) { e.preventDefault(); switchTab('documents'); } },
-  '3': () => { if (e.ctrlKey) { e.preventDefault(); switchTab('apis'); } },
-  '4': () => { if (e.ctrlKey) { e.preventDefault(); switchTab('logs'); } },
-  '5': () => { if (e.ctrlKey) { e.preventDefault(); switchTab('sessions'); } },
-  's': () => { if (e.ctrlKey) { e.preventDefault(); /* Save action */ } }
+  'Escape': (e) => { closeDetailModal(); closeCreateModal(); closeSettingsModal(); },
+  'n': (e) => { if (e.ctrlKey && e.shiftKey) { e.preventDefault(); openCreateModal(); } },
+  'f': (e) => { if (e.ctrlKey) { e.preventDefault(); document.getElementById('taskSearch')?.focus(); } },
+  'r': (e) => { if (e.ctrlKey) { e.preventDefault(); loadTasks(true); loadAgentMonitor(); loadDashboardConfig(); } },
+  '1': (e) => { if (e.ctrlKey) { e.preventDefault(); switchTab('tasks'); } },
+  '2': (e) => { if (e.ctrlKey) { e.preventDefault(); switchTab('documents'); } },
+  '3': (e) => { if (e.ctrlKey) { e.preventDefault(); switchTab('apis'); } },
+  '4': (e) => { if (e.ctrlKey) { e.preventDefault(); switchTab('logs'); } }
 };
 
 document.addEventListener('keydown', e => {
   const action = shortcuts[e.key];
-  if (action) action();
+  if (action) action(e);
 });
 
-// Tab switching helper
+// Tab switching helper — delegate to the real tab click handler
 function switchTab(tabId) {
-  const tabBtns = document.querySelectorAll('.tab-btn');
-  const tabPanes = document.querySelectorAll('.tab-pane');
-  tabBtns.forEach(btn => btn.classList.remove('active'));
-  tabPanes.forEach(pane => pane.classList.remove('active'));
-  const btn = document.querySelector('[data-tab="' + tabId + '"]');
-  const pane = document.getElementById(tabId + 'Tab');
-  if (btn) btn.classList.add('active');
-  if (pane) pane.classList.add('active');
+  const btn = document.querySelector('.tab-btn[data-tab="' + tabId + '"]');
+  if (btn) btn.click();
 }
 
 // Show keyboard shortcuts hint
@@ -3041,7 +3235,7 @@ function showShortcutsHint() {
   hint.style.cssText = 'position:fixed;bottom:20px;right:20px;background:linear-gradient(135deg,#1a1f2e,#2d3548);border:1px solid #3d4a5c;border-radius:12px;padding:16px 20px;color:#e6edf3;font-family:Outfit,sans-serif;font-size:13px;z-index:10000;box-shadow:0 8px32px rgba(0,0,0,0.4);max-width:280px;';
   hint.innerHTML = '<strong style="color:#7c5cfc;display:block;margin-bottom:10px;">⌨️ Keyboard Shortcuts</strong>' +
     '<div style="display:grid;gap:6px;font-size:12px;">' +
-    '<div><kbd style="background:#3d4a5c;padding:2px 6px;border-radius:4px;font-family:monospace;">Ctrl+1-5</kbd> Switch tabs</div>' +
+    '<div><kbd style="background:#3d4a5c;padding:2px 6px;border-radius:4px;font-family:monospace;">Ctrl+1-4</kbd> Switch tabs</div>' +
     '<div><kbd style="background:#3d4a5c;padding:2px 6px;border-radius:4px;font-family:monospace;">Ctrl+F</kbd> Search</div>' +
     '<div><kbd style="background:#3d4a5c;padding:2px 6px;border-radius:4px;font-family:monospace;">Ctrl+R</kbd> Refresh</div>' +
     '<div><kbd style="background:#3d4a5c;padding:2px 6px;border-radius:4px;font-family:monospace;">Ctrl+Shift+N</kbd> New Task</div>' +
