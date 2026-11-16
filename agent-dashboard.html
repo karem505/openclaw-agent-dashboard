@@ -1194,6 +1194,11 @@ function agentDisplayName(id) {
   return (a && a.name) || id;
 }
 
+// escHtml doesn't escape quotes — needed for values embedded in quoted attributes
+function escAttr(s) {
+  return escHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function modelLabel(id) {
   const m = (dashConfig.models || []).find(m => m.id === id);
   return m ? m.label : id;
@@ -1258,8 +1263,8 @@ function openSettingsModal() {
     return `<div class="settings-agent-row">
       ${avatar}
       <span class="settings-agent-id">${escHtml(a.id)}</span>
-      <input class="settings-name-input" data-agent-id="${escHtml(a.id)}"
-             value="${escHtml(a.name || '')}" placeholder="${escHtml(a.configuredName || a.id)}">
+      <input class="settings-name-input" data-agent-id="${escAttr(a.id)}"
+             value="${escAttr(a.name || '')}" placeholder="${escAttr(a.configuredName || a.id)}">
     </div>`;
   }).join('') || '<div style="color:var(--text2);font-size:.85rem;padding:8px 0">No agents found in OpenClaw config</div>';
   populateModelSelect(document.getElementById('settingsDefaultModel'), dashConfig.defaultModel);

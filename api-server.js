@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const url = require('url');
 
 // --- Config ---
-const PORT = parseInt(process.env.DASHBOARD_PORT || '18791', 10);
+const PORT = parseInt(process.env.DASHBOARD_PORT || process.env.PORT || '18791', 10);
 const AUTH_TOKEN = process.env.OPENCLAW_AUTH_TOKEN || '';
 const OPENCLAW_CONFIG = process.env.OPENCLAW_CONFIG_FILE || path.join(process.env.HOME || '', '.openclaw', 'openclaw.json');
 const WORKSPACE = process.env.OPENCLAW_WORKSPACE || path.join(process.env.HOME || '', 'Agents_Central');
