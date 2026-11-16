@@ -224,6 +224,19 @@ function writeTasks(tasks) {
   fs.renameSync(tmp, TASKS_FILE);
 }
 
+// --- Store mutation serialization ---
+// Handlers await request bodies, so concurrent mutations (user UI + executing
+// agents) can interleave their read→modify→write and silently lose updates.
+// Route every mutation through a per-file promise-chain mutex; writes stay
+// tmp+rename atomic.
+const storeLocks = new Map();
+function withFileLock(file, fn) {
+  const prev = storeLocks.get(file) || Promise.resolve();
+  const run = prev.then(fn, fn); // run even if the previous mutation failed
+  storeLocks.set(file, run.catch(() => {})); // keep the chain alive
+  return run; // caller still sees the real error
+}
+
 // --- Dashboard config (agent display names, default model) ---
 // User renames/overrides persist to the vault; identities + model policy come
 // from openclaw.json (the authoritative gateway config).
@@ -371,16 +384,18 @@ function handleTasks(req, res, parsed, segments, method) {
         notes: [],
         source: body.source || 'dashboard',
       };
-      const tasks = readTasks();
-      tasks.push(task);
-      writeTasks(tasks);
+      return withFileLock(TASKS_FILE, () => {
+        const tasks = readTasks();
+        tasks.push(task);
+        writeTasks(tasks);
 
-      // Trigger instant execution via webhook
-      if (task.status === 'new') {
-        triggerTaskExecution(task);
-      }
+        // Trigger instant execution via webhook
+        if (task.status === 'new') {
+          triggerTaskExecution(task);
+        }
 
-      return jsonReply(res, 201, task);
+        return jsonReply(res, 201, task);
+      });
     }).catch((e) => errorReply(res, 400, e.message));
   }
 
@@ -390,49 +405,53 @@ function handleTasks(req, res, parsed, segments, method) {
       if (!Array.isArray(body.taskIds) || body.taskIds.length === 0) {
         return errorReply(res, 400, 'taskIds array is required');
       }
-      const tasks = readTasks();
-      const spawned = [];
-      const skipped = [];
-      for (const id of body.taskIds) {
-        const task = tasks.find(t => t.id === id);
-        if (!task) { skipped.push({ id, reason: 'not found' }); continue; }
-        if (task.status === 'in-progress') { skipped.push({ id, reason: 'already running' }); continue; }
-        task.notes.push({
-          text: `⚡ Spawned as part of parallel batch (${body.taskIds.length} tasks)`,
-          timestamp: new Date().toISOString(),
-        });
-        if (task.status === 'done' || task.status === 'failed') {
-          task.notes.push({ text: `Status changed from "${task.status}" to "new"`, timestamp: new Date().toISOString() });
-          task.status = 'new';
+      return withFileLock(TASKS_FILE, () => {
+        const tasks = readTasks();
+        const spawned = [];
+        const skipped = [];
+        for (const id of body.taskIds) {
+          const task = tasks.find(t => t.id === id);
+          if (!task) { skipped.push({ id, reason: 'not found' }); continue; }
+          if (task.status === 'in-progress') { skipped.push({ id, reason: 'already running' }); continue; }
+          task.notes.push({
+            text: `⚡ Spawned as part of parallel batch (${body.taskIds.length} tasks)`,
+            timestamp: new Date().toISOString(),
+          });
+          if (task.status === 'done' || task.status === 'failed') {
+            task.notes.push({ text: `Status changed from "${task.status}" to "new"`, timestamp: new Date().toISOString() });
+            task.status = 'new';
+          }
+          task.updatedAt = new Date().toISOString();
+          triggerTaskExecution(task);
+          spawned.push(task);
         }
-        task.updatedAt = new Date().toISOString();
-        triggerTaskExecution(task);
-        spawned.push(task);
-      }
-      writeTasks(tasks);
-      return jsonReply(res, 200, { spawned: spawned.length, skipped, tasks: spawned });
+        writeTasks(tasks);
+        return jsonReply(res, 200, { spawned: spawned.length, skipped, tasks: spawned });
+      });
     }).catch((e) => errorReply(res, 400, e.message));
   }
 
   // POST /tasks/:id/spawn
   if (method === 'POST' && segments.length === 3 && segments[2] === 'spawn') {
     const id = segments[1];
-    const tasks = readTasks();
-    const task = tasks.find((t) => t.id === id);
-    if (!task) return errorReply(res, 404, 'Task not found');
-    if (task.status === 'in-progress') return errorReply(res, 409, 'Task is already running');
-    task.notes.push({
-      text: '⚡ Spawned as parallel sub-agent',
-      timestamp: new Date().toISOString(),
+    return withFileLock(TASKS_FILE, () => {
+      const tasks = readTasks();
+      const task = tasks.find((t) => t.id === id);
+      if (!task) return errorReply(res, 404, 'Task not found');
+      if (task.status === 'in-progress') return errorReply(res, 409, 'Task is already running');
+      task.notes.push({
+        text: '⚡ Spawned as parallel sub-agent',
+        timestamp: new Date().toISOString(),
+      });
+      if (task.status === 'done' || task.status === 'failed') {
+        task.notes.push({ text: `Status changed from "${task.status}" to "new"`, timestamp: new Date().toISOString() });
+        task.status = 'new';
+      }
+      task.updatedAt = new Date().toISOString();
+      writeTasks(tasks);
+      triggerTaskExecution(task);
+      return jsonReply(res, 200, task);
     });
-    if (task.status === 'done' || task.status === 'failed') {
-      task.notes.push({ text: `Status changed from "${task.status}" to "new"`, timestamp: new Date().toISOString() });
-      task.status = 'new';
-    }
-    task.updatedAt = new Date().toISOString();
-    writeTasks(tasks);
-    triggerTaskExecution(task);
-    return jsonReply(res, 200, task);
   }
 
   // POST /tasks/:id/notes
@@ -442,21 +461,23 @@ function handleTasks(req, res, parsed, segments, method) {
       if (!body.text || typeof body.text !== 'string') {
         return errorReply(res, 400, 'text is required');
       }
-      const tasks = readTasks();
-      const task = tasks.find((t) => t.id === id);
-      if (!task) return errorReply(res, 404, 'Task not found');
-      const note = { text: body.text, timestamp: new Date().toISOString() };
-      task.notes.push(note);
-      task.updatedAt = new Date().toISOString();
-      writeTasks(tasks);
-      return jsonReply(res, 201, note);
+      return withFileLock(TASKS_FILE, () => {
+        const tasks = readTasks();
+        const task = tasks.find((t) => t.id === id);
+        if (!task) return errorReply(res, 404, 'Task not found');
+        const note = { text: body.text, timestamp: new Date().toISOString() };
+        task.notes.push(note);
+        task.updatedAt = new Date().toISOString();
+        writeTasks(tasks);
+        return jsonReply(res, 201, note);
+      });
     }).catch((e) => errorReply(res, 400, e.message));
   }
 
   // PATCH /tasks/:id
   if (method === 'PATCH' && segments.length === 2) {
     const id = segments[1];
-    return readJsonBody(req).then((body) => {
+    return readJsonBody(req).then((body) => withFileLock(TASKS_FILE, () => {
       const tasks = readTasks();
       const task = tasks.find((t) => t.id === id);
       if (!task) return errorReply(res, 404, 'Task not found');
@@ -488,18 +509,20 @@ function handleTasks(req, res, parsed, segments, method) {
       task.updatedAt = new Date().toISOString();
       writeTasks(tasks);
       return jsonReply(res, 200, task);
-    }).catch((e) => errorReply(res, 400, e.message));
+    })).catch((e) => errorReply(res, 400, e.message));
   }
 
   // DELETE /tasks/:id
   if (method === 'DELETE' && segments.length === 2) {
     const id = segments[1];
-    const tasks = readTasks();
-    const idx = tasks.findIndex((t) => t.id === id);
-    if (idx === -1) return errorReply(res, 404, 'Task not found');
-    const removed = tasks.splice(idx, 1)[0];
-    writeTasks(tasks);
-    return jsonReply(res, 200, removed);
+    return withFileLock(TASKS_FILE, () => {
+      const tasks = readTasks();
+      const idx = tasks.findIndex((t) => t.id === id);
+      if (idx === -1) return errorReply(res, 404, 'Task not found');
+      const removed = tasks.splice(idx, 1)[0];
+      writeTasks(tasks);
+      return jsonReply(res, 200, removed);
+    });
   }
 
   return errorReply(res, 405, 'Method not allowed');
@@ -898,18 +921,20 @@ function handleAttachments(req, res, parsed, segments, method) {
       const ext = path.extname(finalName).toLowerCase();
       const isImage = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'].includes(ext);
 
-      // Add a note about the attachment
-      const tasks = readTasks();
-      const task = tasks.find(t => t.id === taskId);
-      if (task) {
-        const uploadedBy = body.source || 'user';
-        task.notes.push({
-          text: `📎 ${uploadedBy === 'agent' ? 'Agent' : 'User'} attached: ${finalName} (${formatFileSize(stat.size)})`,
-          timestamp: new Date().toISOString(),
-        });
-        task.updatedAt = new Date().toISOString();
-        writeTasks(tasks);
-      }
+      // Add a note about the attachment (serialized against other task mutations)
+      withFileLock(TASKS_FILE, () => {
+        const tasks = readTasks();
+        const task = tasks.find(t => t.id === taskId);
+        if (task) {
+          const uploadedBy = body.source || 'user';
+          task.notes.push({
+            text: `📎 ${uploadedBy === 'agent' ? 'Agent' : 'User'} attached: ${finalName} (${formatFileSize(stat.size)})`,
+            timestamp: new Date().toISOString(),
+          });
+          task.updatedAt = new Date().toISOString();
+          writeTasks(tasks);
+        }
+      });
 
       return jsonReply(res, 201, { name: finalName, size: stat.size, isImage, createdAt: stat.birthtime.toISOString(), ext });
     }).catch(e => errorReply(res, 400, e.message));
@@ -924,17 +949,19 @@ function handleAttachments(req, res, parsed, segments, method) {
       if (!fs.existsSync(filePath)) return errorReply(res, 404, 'File not found');
       fs.unlinkSync(filePath);
 
-      // Add a note about deletion
-      const tasks = readTasks();
-      const task = tasks.find(t => t.id === taskId);
-      if (task) {
-        task.notes.push({
-          text: `🗑️ Attachment removed: ${filename}`,
-          timestamp: new Date().toISOString(),
-        });
-        task.updatedAt = new Date().toISOString();
-        writeTasks(tasks);
-      }
+      // Add a note about deletion (serialized against other task mutations)
+      withFileLock(TASKS_FILE, () => {
+        const tasks = readTasks();
+        const task = tasks.find(t => t.id === taskId);
+        if (task) {
+          task.notes.push({
+            text: `🗑️ Attachment removed: ${filename}`,
+            timestamp: new Date().toISOString(),
+          });
+          task.updatedAt = new Date().toISOString();
+          writeTasks(tasks);
+        }
+      });
 
       return jsonReply(res, 200, { deleted: filename });
     } catch (e) {
@@ -1076,37 +1103,39 @@ function handleCron(req, res, parsed, segments, method) {
         return errorReply(res, 400, 'schedule is required');
       }
 
-      const store = loadCronStore();
-      const now = Date.now();
-      const newJob = {
-        id: uuid(),
-        agentId: body.agentId || 'main',
-        name: body.name.trim(),
-        enabled: body.enabled !== false,
-        createdAtMs: now,
-        updatedAtMs: now,
-        schedule: body.schedule,
-        sessionTarget: body.sessionTarget || 'isolated',
-        wakeMode: body.wakeMode || 'now',
-        payload: body.payload || { kind: 'agentTurn', message: '' },
-        state: {
-          nextRunAtMs: null,
-          lastRunAtMs: null,
-          lastStatus: null,
-          lastDurationMs: null,
-        },
-      };
+      return withFileLock(CRON_STORE_PATH, () => {
+        const store = loadCronStore();
+        const now = Date.now();
+        const newJob = {
+          id: uuid(),
+          agentId: body.agentId || 'main',
+          name: body.name.trim(),
+          enabled: body.enabled !== false,
+          createdAtMs: now,
+          updatedAtMs: now,
+          schedule: body.schedule,
+          sessionTarget: body.sessionTarget || 'isolated',
+          wakeMode: body.wakeMode || 'now',
+          payload: body.payload || { kind: 'agentTurn', message: '' },
+          state: {
+            nextRunAtMs: null,
+            lastRunAtMs: null,
+            lastStatus: null,
+            lastDurationMs: null,
+          },
+        };
 
-      store.jobs.push(newJob);
-      saveCronStore(store);
-      return jsonReply(res, 201, newJob);
+        store.jobs.push(newJob);
+        saveCronStore(store);
+        return jsonReply(res, 201, newJob);
+      });
     }).catch((e) => errorReply(res, 400, e.message));
   }
 
   // PATCH /cron/:id — update job
   if (method === 'PATCH' && segments.length === 2) {
     const jobId = segments[1];
-    return readJsonBody(req).then((body) => {
+    return readJsonBody(req).then((body) => withFileLock(CRON_STORE_PATH, () => {
       const store = loadCronStore();
       const job = store.jobs.find(j => j.id === jobId);
       if (!job) return errorReply(res, 404, 'Job not found');
@@ -1128,18 +1157,20 @@ function handleCron(req, res, parsed, segments, method) {
 
       saveCronStore(store);
       return jsonReply(res, 200, job);
-    }).catch((e) => errorReply(res, 400, e.message));
+    })).catch((e) => errorReply(res, 400, e.message));
   }
 
   // DELETE /cron/:id — remove job
   if (method === 'DELETE' && segments.length === 2) {
     const jobId = segments[1];
-    const store = loadCronStore();
-    const idx = store.jobs.findIndex(j => j.id === jobId);
-    if (idx === -1) return errorReply(res, 404, 'Job not found');
-    const removed = store.jobs.splice(idx, 1)[0];
-    saveCronStore(store);
-    return jsonReply(res, 200, removed);
+    return withFileLock(CRON_STORE_PATH, () => {
+      const store = loadCronStore();
+      const idx = store.jobs.findIndex(j => j.id === jobId);
+      if (idx === -1) return errorReply(res, 404, 'Job not found');
+      const removed = store.jobs.splice(idx, 1)[0];
+      saveCronStore(store);
+      return jsonReply(res, 200, removed);
+    });
   }
 
   // POST /cron/:id/run — run now
